@@ -1,12 +1,11 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const controller = require('../controllers/userController');
-const { protect, adminOnly } = require('../middleware/authMiddleware');
+const { signupUser, loginUser, getUsers, deleteUser } = require("../controllers/userController");
+const { verifyToken } = require("../middlewares/authMiddleware");
 
-router.post('/signup', controller.signup);
-router.post('/login', controller.login);
-router.get('/', protect, controller.getUsers); // guests and admins can GET aggregated data
-router.put('/:id', protect, adminOnly, controller.updateUser);
-router.delete('/:id', protect, adminOnly, controller.deleteUser);
+router.post("/signup", signupUser);
+router.post("/login", loginUser);
+router.get("/", verifyToken, getUsers);
+router.delete("/:id", verifyToken, deleteUser);
 
 module.exports = router;

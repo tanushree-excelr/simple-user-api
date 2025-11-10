@@ -1,111 +1,73 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require("../models/User");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
-exports.signup = async (req, res) => {
+// Signup
+const signupUser = async (req, res) => {
   try {
-    const { name, emailId, username, password, birthdate, hobby } = req.body;
-    if (!name || !emailId || !username || !password || !birthdate) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
+    const { name, email, password, role } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already exists" });
 
-    const existing = await User.findOne({ $or: [{ emailId }, { username }] });
-    if (existing) return res.status(400).json({ message: 'User already exists' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashedPassword, role: role || "guest" });
 
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({
-      name,
-      emailId,
-      username,
-      password: hashed,
-      birthdate,
-      hobby: Array.isArray(hobby) ? hobby : (hobby ? [hobby] : []),
-      role: 'guest'
-    });
-
-    res.status(201).json({ message: 'User registered successfully', user: {
-      id: user._id,
-      name: user.name,
-      emailId: user.emailId,
-      username: user.username,
-      birthdate: user.birthdate,
-      role: user.role,
-      hobby: user.hobby
-    }});
-  } catch (error) {
-    res.status(500).json({ message: 'Error during signup', error: error.message });
+    res.status(201).json({ message: "User created", user });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 };
 
-exports.login = async (req, res) => {
+// Login
+const loginUser = async (req, res) => {
   try {
-    const { emailId, username, password } = req.body;
-    if (!password || (!emailId && !username)) {
-      return res.status(400).json({ message: 'Provide username or emailId and password' });
-    }
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
-    const user = await User.findOne({ $or: [{ emailId }, { username }] });
-    if (!user) return res.status(400).json({ message: 'User not found' });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ message: "Invalid email or password" });
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(400).json({ message: 'Invalid password' });
-
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
-    res.json({ token, role: user.role });
-  } catch (error) {
-    res.status(500).json({ message: 'Error during login', error: error.message });
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || "secret", { expiresIn: "1h" });
+    res.json({ token });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
-exports.getUsers = async (req, res) => {
+// Get users (admin only)
+const getUsers = async (req, res) => {
   try {
-    const users = await User.find();
-    const hobbyData = {};
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
 
-    users.forEach(u => {
-      const age = new Date().getFullYear() - new Date(u.birthdate).getFullYear();
-      (u.hobby || []).forEach(h => {
-        if (!hobbyData[h]) hobbyData[h] = { total_users: 0, unique_ages: new Set() };
-        hobbyData[h].total_users += 1;
-        hobbyData[h].unique_ages.add(age);
-      });
-    });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    const result = Object.keys(hobbyData).map(h => ({
-      hobby: h,
-      total_users: hobbyData[h].total_users,
-      unique_ages: Array.from(hobbyData[h].unique_ages)
-    }));
+    const totalUsers = await User.countDocuments();
+    const users = await User.find().skip(skip).limit(limit);
 
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching users', error: error.message });
+    res.json({ totalUsers, users });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };
 
-exports.updateUser = async (req, res) => {
+// Delete user (admin only)
+const deleteUser = async (req, res) => {
   try {
+    if (req.user.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+
     const { id } = req.params;
-    const body = { ...req.body };
-    // if password present, hash it
-    if (body.password) {
-      body.password = await bcrypt.hash(body.password, 10);
-    }
-    const updated = await User.findByIdAndUpdate(id, body, { new: true });
-    if (!updated) return res.status(404).json({ message: 'User not found' });
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ message: 'Error updating user', error: error.message });
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    await user.deleteOne();
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (err) {
+    console.error("Delete user error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
-exports.deleteUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const deleted = await User.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ message: 'User not found' });
-    res.json({ message: 'User deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Error deleting user', error: error.message });
-  }
-};
+module.exports = { signupUser, loginUser, getUsers, deleteUser };
