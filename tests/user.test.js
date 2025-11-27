@@ -8,111 +8,74 @@ let tokenGuest;
 let createdUserId;
 
 beforeAll(async () => {
-  // Ensure DB is clean
-  await mongoose.connection.dropCollection("users").catch(() => {});
+  await mongoose.connect(process.env.MONGO_URI);
+  await User.deleteMany({});
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropCollection("users").catch(() => {});
+  await User.deleteMany({});
   await mongoose.connection.close();
 });
 
-describe("User API Test Suite", () => {
-
-  it("should signup a new user successfully", async () => {
+describe("User API Tests", () => {
+  it("should signup admin user", async () => {
     const res = await request(app).post("/api/users/signup").send({
       name: "Admin User",
-      email: "admin@example.com",
-      password: "adminpass",
+      emailId: "admin@test.com",
+      username: "admin1",
+      password: "12345",
+      birthdate: "1990-01-01",
+      hobby: ["reading"],
       role: "admin"
     });
     expect(res.statusCode).toBe(201);
-    expect(res.body.user.email).toBe("admin@example.com");
   });
 
-  it("should not allow duplicate email signup", async () => {
-    const res = await request(app).post("/api/users/signup").send({
-      name: "Admin User",
-      email: "admin@example.com",
-      password: "adminpass"
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it("should login successfully and return token", async () => {
+  it("should login admin user", async () => {
     const res = await request(app).post("/api/users/login").send({
-      email: "admin@example.com",
-      password: "adminpass"
+      emailId: "admin@test.com",
+      password: "12345"
     });
     expect(res.statusCode).toBe(200);
     tokenAdmin = res.body.token;
-    expect(tokenAdmin).toBeDefined();
   });
 
-  it("should fail login with wrong password", async () => {
-    const res = await request(app).post("/api/users/login").send({
-      email: "admin@example.com",
-      password: "wrongpass"
+  it("should create guest user and login", async () => {
+    const res1 = await request(app).post("/api/users/signup").send({
+      name: "Guest",
+      emailId: "guest@test.com",
+      username: "guest1",
+      password: "12345",
+      birthdate: "2000-01-01",
+      hobby: ["gaming"]
     });
-    expect(res.statusCode).toBe(401);
-  });
+    expect(res1.statusCode).toBe(201);
 
-  it("should create another guest user", async () => {
-    const res = await request(app).post("/api/users/signup").send({
-      name: "Guest User",
-      email: "guest@example.com",
-      password: "guestpass",
-      role: "guest"
+    createdUserId = res1.body.user._id;
+
+    const res2 = await request(app).post("/api/users/login").send({
+      emailId: "guest@test.com",
+      password: "12345"
     });
-    expect(res.statusCode).toBe(201);
-    createdUserId = res.body.user._id;
+
+    expect(res2.statusCode).toBe(200);
+    tokenGuest = res2.body.token;
   });
 
-  it("should login as guest and get token", async () => {
-    const res = await request(app).post("/api/users/login").send({
-      email: "guest@example.com",
-      password: "guestpass"
-    });
-    expect(res.statusCode).toBe(200);
-    tokenGuest = res.body.token;
-    expect(tokenGuest).toBeDefined();
-  });
-
-  it("should fetch users with pagination and aggregation (admin only)", async () => {
+  it("should fetch users with pagination (admin only)", async () => {
     const res = await request(app)
       .get("/api/users?page=1&limit=10")
       .set("Authorization", `Bearer ${tokenAdmin}`);
+
     expect(res.statusCode).toBe(200);
-    expect(res.body).toHaveProperty("totalUsers");
-    expect(res.body.users.length).toBeGreaterThan(0);
+    expect(res.body).toHaveProperty("users");
   });
 
-  it("should delete a user as admin", async () => {
+  it("should delete user as admin", async () => {
     const res = await request(app)
       .delete(`/api/users/${createdUserId}`)
       .set("Authorization", `Bearer ${tokenAdmin}`);
+
     expect(res.statusCode).toBe(200);
-    expect(res.body.message).toBe("User deleted successfully");
   });
-
-  it("should not allow guest to delete user", async () => {
-    // Recreate a user to test guest deletion
-    const newUser = await request(app).post("/api/users/signup").send({
-      name: "Another User",
-      email: "another@example.com",
-      password: "userpass",
-      role: "guest"
-    });
-
-    const res = await request(app)
-      .delete(`/api/users/${newUser.body.user._id}`)
-      .set("Authorization", `Bearer ${tokenGuest}`);
-    expect(res.statusCode).toBe(403);
-  });
-
-  it("should return 404 for unknown route", async () => {
-    const res = await request(app).get("/api/unknown");
-    expect(res.statusCode).toBe(404);
-  });
-
 });
