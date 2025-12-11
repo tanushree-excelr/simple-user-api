@@ -3,16 +3,14 @@ const mongoose = require("mongoose");
 mongoose
   .connect("mongodb://localhost:27017/simple_user_api")
   .then(async () => {
-    console.log("MongoDB connected");
-
     const collections = await mongoose.connection.db.listCollections().toArray();
-    const collectionNames = collections.map(c => c.name);
+    const names = collections.map(c => c.name);
 
-    if (collectionNames.includes("users")) {
+    if (names.includes("users")) {
       await mongoose.connection.dropCollection("users");
       console.log("Dropped users collection");
     } else {
-      console.log("No users collection to drop");
+      console.log("No users collection found");
     }
 
     process.exit(0);

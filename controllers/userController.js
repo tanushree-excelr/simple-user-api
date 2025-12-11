@@ -72,10 +72,32 @@ const getUsers = async (req, res) => {
         $group: {
           _id: "$hobby",
           total_users: { $sum: 1 },
-          unique_ages: { $addToSet: "$birthdate" }
+          birthdates: { $push: "$birthdate" }
         }
       },
-      { $project: { _id: 0, hobby: "$_id", total_users: 1, unique_ages: 1 } },
+      {
+        $project: {
+          _id: 0,
+          hobby: "$_id",
+          total_users: 1,
+          unique_ages: {
+            $map: {
+              input: {
+                $setUnion: ["$birthdates", []]
+              },
+              as: "bdate",
+              in: {
+                $let: {
+                  vars: {
+                    diff: { $divide: [{ $subtract: [new Date(), "$$bdate"] }, 1000 * 60 * 60 * 24 * 365] }
+                  },
+                  in: { $floor: "$$diff" }
+                }
+              }
+            }
+          }
+        }
+      },
       { $skip: skip },
       { $limit: limit }
     ]);

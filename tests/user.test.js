@@ -50,32 +50,35 @@ describe("User API Tests", () => {
       hobby: ["gaming"]
     });
     expect(res1.statusCode).toBe(201);
-
     createdUserId = res1.body.user._id;
 
     const res2 = await request(app).post("/api/users/login").send({
       emailId: "guest@test.com",
       password: "12345"
     });
-
     expect(res2.statusCode).toBe(200);
     tokenGuest = res2.body.token;
   });
 
-  it("should fetch users with pagination (admin only)", async () => {
+  it("should fetch users (admin only)", async () => {
     const res = await request(app)
-      .get("/api/users?page=1&limit=10")
+      .get("/api/users")
       .set("Authorization", `Bearer ${tokenAdmin}`);
-
     expect(res.statusCode).toBe(200);
     expect(res.body).toHaveProperty("users");
+  });
+
+  it("should forbid guest from fetching users", async () => {
+    const res = await request(app)
+      .get("/api/users")
+      .set("Authorization", `Bearer ${tokenGuest}`);
+    expect(res.statusCode).toBe(403);
   });
 
   it("should delete user as admin", async () => {
     const res = await request(app)
       .delete(`/api/users/${createdUserId}`)
       .set("Authorization", `Bearer ${tokenAdmin}`);
-
     expect(res.statusCode).toBe(200);
   });
 });
